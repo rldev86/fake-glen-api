@@ -1,0 +1,3 @@
+import glen.net.*;
+import glen.time.Timer;
+public class BenchClient { public static void main() { HttpClient h = HttpClient.create().timeoutMillis(15000).acceptJson(); Timer t = Timer.start(); HttpResponse r = h.get("http://127.0.0.1:7703/clients"); IO.println("status=" + r.statusCode()); IO.println("body bytes=" + r.body().byteLength()); IO.println("ms=" + t.elapsedMillis()); } }

@@ -9,92 +9,146 @@ public class Server {
         return Integer.parseInt(value);
     }
 
-    private static JsonObject client(int id, String name, String email, String city, String plan, bool active) {
+    private static int pseudo(int id, int salt, int max) {
+        int value = (id * 7919) + (salt * 104729) + 12345;
+        if (value < 0) { value = -value; }
+        return value % max;
+    }
+
+    private static String pick(String[] values, int id, int salt) {
+        return values[pseudo(id, salt, values.length)];
+    }
+
+    private static String firstName(int id) {
+        String[] names = {
+            "Alice", "Bruno", "Clara", "Diego", "Gabriel", "Laura", "Lucas", "Marina",
+            "Rafael", "Sofia", "Daniel", "Julia", "Pedro", "Bianca", "Caio", "Helena",
+            "Mateus", "Isabela", "Thiago", "Camila", "Felipe", "Ana", "Victor", "Livia",
+            "Gustavo", "Manuela", "Eduardo", "Beatriz", "Renan", "Carolina"
+        };
+        return pick(names, id, 1);
+    }
+
+    private static String lastName(int id) {
+        String[] names = {
+            "Carter", "Martins", "Silva", "Rocha", "Santa", "Oliveira", "Santos", "Pereira",
+            "Almeida", "Costa", "Ribeiro", "Fernandes", "Moraes", "Lima", "Barbosa", "Teixeira",
+            "Carvalho", "Nunes", "Melo", "Araujo", "Castro", "Gomes", "Freitas", "Correia",
+            "Monteiro", "Dias", "Cardoso", "Moreira", "Vieira", "Campos"
+        };
+        return pick(names, id, 2);
+    }
+
+    private static String city(int id) {
+        String[] cities = {
+            "Santos", "Sao Paulo", "Rio de Janeiro", "Curitiba", "Florianopolis", "Belo Horizonte",
+            "Porto Alegre", "Salvador", "Recife", "Fortaleza", "Brasilia", "Campinas", "Vitoria",
+            "Goiania", "Manaus", "Natal", "Joao Pessoa", "Maceio", "Joinville", "Ribeirao Preto"
+        };
+        return pick(cities, id, 3);
+    }
+
+    private static String plan(int id) {
+        String[] plans = { "Free", "Starter", "Pro", "Business", "Enterprise" };
+        return pick(plans, id, 4);
+    }
+
+    private static String email(String first, String last, int id) {
+        return first.toLowerCase() + "." + last.toLowerCase() + "." + id + "@example.com";
+    }
+
+    private static bool active(int id) {
+        return pseudo(id, 5, 100) >= 24;
+    }
+
+    private static JsonObject client(int id) {
+        String first = firstName(id);
+        String last = lastName(id);
         return Json.object()
             .setNumber("id", id)
-            .setString("name", name)
-            .setString("email", email)
-            .setString("city", city)
-            .setString("plan", plan)
-            .setBool("active", active);
+            .setString("name", first + " " + last)
+            .setString("email", email(first, last, id))
+            .setString("city", city(id))
+            .setString("plan", plan(id))
+            .setBool("active", active(id));
     }
 
-    private static JsonArray clients() {
-        return Json.array()
-            .addObject(client(1, "Alice Carter", "alice@example.com", "Santos", "Pro", true))
-            .addObject(client(2, "Bruno Martins", "bruno@example.com", "Sao Paulo", "Business", true))
-            .addObject(client(3, "Clara Silva", "clara@example.com", "Rio de Janeiro", "Free", false))
-            .addObject(client(4, "Diego Rocha", "diego@example.com", "Curitiba", "Pro", true))
-            .addObject(client(5, "Gabriel Santa", "gabriel@example.com", "Santos", "Free", false));
+    private static void appendClientJson(StringBuilder out, int id) {
+        String first = firstName(id);
+        String last = lastName(id);
+        out.appendRaw("{\"id\":").append(id)
+            .appendRaw(",\"name\":\"").appendRaw(first).appendRaw(" ").appendRaw(last)
+            .appendRaw("\",\"email\":\"").appendRaw(email(first, last, id))
+            .appendRaw("\",\"city\":\"").appendRaw(city(id))
+            .appendRaw("\",\"plan\":\"").appendRaw(plan(id))
+            .appendRaw("\",\"active\":");
+        if (active(id)) { out.appendRaw("true"); } else { out.appendRaw("false"); }
+        out.appendRaw("}");
     }
 
-    private static JsonObject findClient(int id) {
-        JsonArray list = clients();
+    private static String buildClientsJson(int count) {
+        StringBuilder out = new StringBuilder().reserve(700000);
+        out.appendRaw("{\"ok\":true,\"service\":\"fake-clients-api\",\"version\":\"1.0.0\",\"count\":")
+            .append(count)
+            .appendRaw(",\"clients\":[");
 
-        for (int i = 0; i < list.size(); i = i + 1) {
-            JsonObject current = list.getObject(i);
-
-            if (current.getInt("id") == id) {
-                return current;
-            }
+        for (int id = 1; id <= count; id = id + 1) {
+            if (id > 1) { out.appendRaw(","); }
+            appendClientJson(out, id);
         }
 
-        return null;
+        out.appendRaw("]}");
+        return out.toString();
     }
 
-    private static JsonObject responseEnvelope(JsonArray list) {
-        return Json.object()
-            .setBool("ok", true)
-            .setString("service", "fake-clients-api")
-            .setString("version", "1.0.0")
-            .setNumber("count", list.size())
-            .setArray("clients", list);
+    private static JsonObject findClient(int id, int count) {
+        if (id < 1 || id > count) { return null; }
+        return client(id);
     }
 
     public static void main(String[] args) {
         int port = serverPort();
+        final int clientCount = 5000;
+        final String cachedClientsJson = buildClientsJson(clientCount);
+        final String cachedHealthJson = Json.object()
+            .setBool("ok", true)
+            .setString("status", "online")
+            .setNumber("port", port)
+            .setNumber("totalClients", clientCount)
+            .toJson();
 
-        HttpServer server = HttpServer.onPort(port)
+        HttpServer server = HttpServer.onHost("0.0.0.0", port)
             .serverName("Glen-FakeClientsAPI")
             .maxHeaderBytes(32768)
-            .maxBodyBytes(65536)
+            .maxBodyBytes(1048576)
             .readTimeoutMillis(8000)
             .securityHeaders(true);
 
         server.get("/", (HttpRequest request) -> {
-            return HttpResponse.jsonObject(
+            return HttpResponse.json(
                 Json.object()
                     .setBool("ok", true)
                     .setString("service", "fake-clients-api")
                     .setString("message", "Use GET /health, GET /clients, or GET /clients/:id")
+                    .setNumber("totalClients", clientCount)
+                    .toJson()
             ).noStore();
         });
 
         server.get("/health", (HttpRequest request) -> {
-            return HttpResponse.jsonObject(
-                Json.object()
-                    .setBool("ok", true)
-                    .setString("status", "online")
-                    .setNumber("port", port)
-            ).noStore();
+            return HttpResponse.json(cachedHealthJson).noStore();
         });
 
         server.get("/clients", (HttpRequest request) -> {
-            return HttpResponse.jsonObject(responseEnvelope(clients())).noStore();
+            return HttpResponse.json(cachedClientsJson).noStore();
         });
 
         server.get("/clients/:id", (HttpRequest request) -> {
             int id = Integer.parseInt(request.pathParam("id"));
-            JsonObject found = findClient(id);
-
-            if (found == null) {
-                return HttpResponse.notFound("client not found").noStore();
-            }
-
-            return HttpResponse.jsonObject(
-                Json.object()
-                    .setBool("ok", true)
-                    .setObject("client", found)
+            JsonObject found = findClient(id, clientCount);
+            if (found == null) { return HttpResponse.notFound("client not found").noStore(); }
+            return HttpResponse.json(
+                Json.object().setBool("ok", true).setObject("client", found).toJson()
             ).noStore();
         });
 
@@ -106,20 +160,21 @@ public class Server {
             JsonObject input = request.jsonObject();
             String name = input.getStringOr("name", "");
             String email = input.getStringOr("email", "");
-
             if (name.length() == 0 || email.length() == 0) {
                 return HttpResponse.badRequest("name and email are required").noStore();
             }
 
-            return HttpResponse.jsonObject(
+            return HttpResponse.json(
                 Json.object()
                     .setBool("ok", true)
                     .setString("message", "client payload is valid")
                     .setObject("client", input)
+                    .toJson()
             ).noStore();
         });
 
-        IO.println("Fake clients API listening on port " + port);
+        IO.println("Fake clients API listening on 0.0.0.0:" + port);
+        IO.println("Cached clients: " + clientCount);
         IO.println("GET  /");
         IO.println("GET  /health");
         IO.println("GET  /clients");
