@@ -1,0 +1,67 @@
+import glen.net.*;
+import glen.json.*;
+import glen.runtime.Exception;
+
+public class Client {
+    private static String baseUrl(String[] args) {
+        if (args.length > 0) {
+            return args[0];
+        }
+
+        return "http://127.0.0.1:7700";
+    }
+
+    private static JsonObject requireJsonObject(HttpResponse response, String endpoint) {
+        if (!response.isSuccess()) {
+            throw new Exception(
+                "HTTP request failed for " + endpoint
+                + ": status=" + response.statusCode()
+                + " body=" + response.body()
+            );
+        }
+
+        return response.parseJsonObject();
+    }
+
+    public static void main(String[] args) {
+        String api = baseUrl(args);
+
+        HttpClient http = HttpClient.create()
+            .timeoutMillis(5000)
+            .acceptJson();
+
+        HttpResponse healthResponse = http.get(api + "/health");
+        JsonObject health = requireJsonObject(healthResponse, "GET /health");
+        IO.println("health=" + health.getString("status"));
+
+        HttpResponse clientsResponse = http.get(api + "/clients");
+        JsonObject root = requireJsonObject(clientsResponse, "GET /clients");
+        JsonArray clients = root.getArray("clients");
+
+        IO.println("status=" + clientsResponse.statusCode());
+        IO.println("count=" + clients.size());
+
+        for (int i = 0; i < clients.size(); i = i + 1) {
+            JsonObject client = clients.getObject(i);
+            IO.println(
+                client.getString("name")
+                + " <" + client.getString("email") + ">"
+                + " - " + client.getString("plan")
+            );
+        }
+
+        HttpResponse oneResponse = http.get(api + "/clients/2");
+        JsonObject one = requireJsonObject(oneResponse, "GET /clients/2");
+        IO.println("client 2 city=" + one.getObject("client").getString("city"));
+
+        JsonObject payload = Json.object()
+            .setString("name", "Eva Rocha")
+            .setString("email", "eva@example.com")
+            .setString("city", "Florianopolis")
+            .setString("plan", "Business");
+
+        HttpResponse validationResponse = http.postJson(api + "/clients/validate", payload.toJson());
+        JsonObject validation = requireJsonObject(validationResponse, "POST /clients/validate");
+        IO.println(validation.getString("message"));
+    }
+}

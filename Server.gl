@@ -1,0 +1,130 @@
+import glen.net.*;
+import glen.json.*;
+import glen.system.Environment;
+import glen.runtime.Exception;
+
+public class Server {
+    private static int serverPort() {
+        String value = Environment.getOrDefault("PORT", "7700");
+        return Integer.parseInt(value);
+    }
+
+    private static JsonObject client(int id, String name, String email, String city, String plan, bool active) {
+        return Json.object()
+            .setNumber("id", id)
+            .setString("name", name)
+            .setString("email", email)
+            .setString("city", city)
+            .setString("plan", plan)
+            .setBool("active", active);
+    }
+
+    private static JsonArray clients() {
+        return Json.array()
+            .addObject(client(1, "Alice Carter", "alice@example.com", "Santos", "Pro", true))
+            .addObject(client(2, "Bruno Martins", "bruno@example.com", "Sao Paulo", "Business", true))
+            .addObject(client(3, "Clara Silva", "clara@example.com", "Rio de Janeiro", "Free", false))
+            .addObject(client(4, "Diego Rocha", "diego@example.com", "Curitiba", "Pro", true));
+    }
+
+    private static JsonObject findClient(int id) {
+        JsonArray list = clients();
+
+        for (int i = 0; i < list.size(); i = i + 1) {
+            JsonObject current = list.getObject(i);
+
+            if (current.getInt("id") == id) {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonObject responseEnvelope(JsonArray list) {
+        return Json.object()
+            .setBool("ok", true)
+            .setString("service", "fake-clients-api")
+            .setString("version", "1.0.0")
+            .setNumber("count", list.size())
+            .setArray("clients", list);
+    }
+
+    public static void main(String[] args) {
+        int port = serverPort();
+
+        HttpServer server = HttpServer.onPort(port)
+            .serverName("Glen-FakeClientsAPI")
+            .maxHeaderBytes(32768)
+            .maxBodyBytes(65536)
+            .readTimeoutMillis(8000)
+            .securityHeaders(true);
+
+        server.get("/", (HttpRequest request) -> {
+            return HttpResponse.jsonObject(
+                Json.object()
+                    .setBool("ok", true)
+                    .setString("service", "fake-clients-api")
+                    .setString("message", "Use GET /health, GET /clients, or GET /clients/:id")
+            ).noStore();
+        });
+
+        server.get("/health", (HttpRequest request) -> {
+            return HttpResponse.jsonObject(
+                Json.object()
+                    .setBool("ok", true)
+                    .setString("status", "online")
+                    .setNumber("port", port)
+            ).noStore();
+        });
+
+        server.get("/clients", (HttpRequest request) -> {
+            return HttpResponse.jsonObject(responseEnvelope(clients())).noStore();
+        });
+
+        server.get("/clients/:id", (HttpRequest request) -> {
+            int id = Integer.parseInt(request.pathParam("id"));
+            JsonObject found = findClient(id);
+
+            if (found == null) {
+                return HttpResponse.notFound("client not found").noStore();
+            }
+
+            return HttpResponse.jsonObject(
+                Json.object()
+                    .setBool("ok", true)
+                    .setObject("client", found)
+            ).noStore();
+        });
+
+        server.post("/clients/validate", (HttpRequest request) -> {
+            if (!request.isJson()) {
+                return HttpResponse.unsupportedMediaType("expected application/json").noStore();
+            }
+
+            JsonObject input = request.jsonObject();
+            String name = input.getStringOr("name", "");
+            String email = input.getStringOr("email", "");
+
+            if (name.length() == 0 || email.length() == 0) {
+                return HttpResponse.badRequest("name and email are required").noStore();
+            }
+
+            return HttpResponse.jsonObject(
+                Json.object()
+                    .setBool("ok", true)
+                    .setString("message", "client payload is valid")
+                    .setObject("client", input)
+            ).noStore();
+        });
+
+        IO.println("Fake clients API listening on port " + port);
+        IO.println("GET  /");
+        IO.println("GET  /health");
+        IO.println("GET  /clients");
+        IO.println("GET  /clients/:id");
+        IO.println("POST /clients/validate");
+
+        server.listen();
+    }
+}
