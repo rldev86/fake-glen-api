@@ -24,7 +24,8 @@ public class Server {
             .addObject(client(1, "Alice Carter", "alice@example.com", "Santos", "Pro", true))
             .addObject(client(2, "Bruno Martins", "bruno@example.com", "Sao Paulo", "Business", true))
             .addObject(client(3, "Clara Silva", "clara@example.com", "Rio de Janeiro", "Free", false))
-            .addObject(client(4, "Diego Rocha", "diego@example.com", "Curitiba", "Pro", true));
+            .addObject(client(4, "Diego Rocha", "diego@example.com", "Curitiba", "Pro", true))
+            .addObject(client(5, "Gabriel Santa", "gabriel@example.com", "Santos", "Free", false));
     }
 
     private static JsonObject findClient(int id) {
